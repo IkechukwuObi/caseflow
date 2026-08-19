@@ -1,0 +1,4 @@
+{
+  "_instructions": "Replace this with real questions once corpus/documents/ has actual FICA/SARB/POPIA text ingested. Each question's expectedSourceTitle must exactly match a 'title' field from a document you actually added — this file ships empty on purpose rather than with invented Q&A pairs pointing at documents that don't exist yet.",
+  "questions": []
+}
