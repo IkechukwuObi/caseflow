@@ -1,17 +1,12 @@
+import path from "path";
+import dotenv from "dotenv";
+
+dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { runSearchCaseArchive, runFlagComplianceTriggers } from "../lib/tools";
-
-/**
- * Standalone MCP server exposing the same case-search and trigger-flagging
- * tools used by the web app's /api/chat route (see lib/tools.ts — single
- * source of truth). Lets Claude Desktop or Claude Code query the case
- * archive directly without going through the web UI.
- *
- * Run with: npm run mcp
- * Then point Claude Desktop / Claude Code's MCP config at this stdio command.
- */
 
 const server = new McpServer({
   name: "caseflow",

@@ -41,6 +41,12 @@ export default function Home() {
         the ingested case archive — if a case isn&apos;t indexed, it will say so
         rather than guess. Compliance-trigger flags are rule-based pattern
         matches for human review, not a determination. Not legal or compliance advice.
+        <br />
+        No Anthropic credit loaded yet? See the{" "}
+        <a href="/demo" style={{ color: "#a9c0ff" }}>
+          retrieval-only demo
+        </a>{" "}
+        — real search, no LLM call needed.
       </div>
 
       <div className="thread">

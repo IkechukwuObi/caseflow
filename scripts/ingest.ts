@@ -1,11 +1,19 @@
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
+
+// This script runs standalone via tsx, outside Next.js's own dev/build
+// lifecycle, so unlike the app itself it does NOT get .env.local loaded
+// automatically. Load it explicitly, first thing, before anything else
+// touches process.env.
+dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+
 import { loadCorpusChunks } from "../lib/corpus";
 import { embedDocuments } from "../lib/embeddings";
 import { IndexedChunk } from "../lib/types";
 
 const OUT_PATH = path.join(process.cwd(), "corpus", "index.json");
-const BATCH_SIZE = 32; // Voyage's per-request list limit is well above this; kept small for clear progress logs.
+const BATCH_SIZE = 32;
 
 async function main() {
   const chunks = loadCorpusChunks();

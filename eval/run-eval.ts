@@ -1,5 +1,9 @@
 import fs from "fs";
 import path from "path";
+import dotenv from "dotenv";
+
+dotenv.config({ path: path.join(process.cwd(), ".env.local") });
+
 import { retrieve } from "../lib/retrieve";
 
 interface EvalQuestion {
@@ -8,14 +12,6 @@ interface EvalQuestion {
   expectedKeywords: string[];
 }
 
-/**
- * Deliberately narrow eval: this checks RETRIEVAL accuracy (did the right
- * source document surface in the top results?), not full end-to-end answer
- * quality grading via an LLM judge. That's the honest, buildable version —
- * retrieval accuracy is the thing most likely to silently fail, and it's
- * checkable without another model call. Extend with LLM-based grading later
- * if you want, but don't skip this simpler check to get there.
- */
 async function main() {
   const datasetPath = path.join(process.cwd(), "eval", "dataset.json");
   const { questions } = JSON.parse(fs.readFileSync(datasetPath, "utf-8")) as {
