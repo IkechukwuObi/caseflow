@@ -1,8 +1,8 @@
 {
-  "name": "reglens",
+  "name": "caseflow",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-assisted regulatory due-diligence and circular-tracking assistant for South African financial compliance, built with the Anthropic API (RAG + tool use + MCP).",
+  "description": "AI-assisted case retrieval and triage for document-heavy back-office processes (loan applications, account openings, disputes), with a lightweight compliance-trigger check. Built with the Anthropic API (RAG + tool use + MCP).",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

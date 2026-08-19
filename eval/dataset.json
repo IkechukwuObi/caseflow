@@ -1,4 +1,20 @@
 {
-  "_instructions": "Replace this with real questions once corpus/documents/ has actual FICA/SARB/POPIA text ingested. Each question's expectedSourceTitle must exactly match a 'title' field from a document you actually added — this file ships empty on purpose rather than with invented Q&A pairs pointing at documents that don't exist yet.",
-  "questions": []
+  "_instructions": "These questions are built against the three synthetic sample cases in corpus/documents/. If you add or change case documents, add matching questions here — don't let this drift out of sync with what's actually indexed.",
+  "questions": [
+    {
+      "question": "What's the issue with the Mokoena loan application?",
+      "expectedSourceTitle": "Loan Application — J. Mokoena (SYNTHETIC DEMO DATA)",
+      "expectedKeywords": ["cash deposit"]
+    },
+    {
+      "question": "Why is the Naidoo business account opening still pending?",
+      "expectedSourceTitle": "Account Opening — T. Naidoo (SYNTHETIC DEMO DATA)",
+      "expectedKeywords": ["turnover"]
+    },
+    {
+      "question": "What happened with dispute reference 88213?",
+      "expectedSourceTitle": "Customer Dispute — Card Transaction Query, ref 88213 (SYNTHETIC DEMO DATA)",
+      "expectedKeywords": ["otp"]
+    }
+  ]
 }

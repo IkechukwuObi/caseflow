@@ -1,29 +1,26 @@
-# Adding real source documents
+# Adding case documents
 
-This directory is intentionally empty of regulatory content at scaffold time.
-Do not fill it with AI-generated "sample circulars" or invented statute text —
-this tool answers compliance questions, and made-up source material is the one
-failure mode that can't be papered over with a caveat later.
+This tool searches and summarizes case documents (loan applications, account
+opening forms, customer disputes, and similar case-file paperwork), the same
+shape of problem Absa's own AI/OCR Gateway solves in their Debt Review unit,
+generalized here as a portfolio build.
 
-Add real, current documents as `.md` files with this frontmatter format:
+Three clearly-labeled **synthetic** sample cases ship in this folder so the
+pipeline runs end-to-end out of the box. They are fictional, invented for
+this demo, and must stay that way in anything public-facing — do not present
+them as real bank data. Replace or extend them with your own realistic (but
+still synthetic, unless you have explicit rights to real anonymized data)
+case documents as you build this out.
+
+Format, same frontmatter pattern as before:
 
 ```
 ---
-title: Financial Intelligence Centre Act 38 of 2001 — Section 21 (Customer Due Diligence)
-url: https://www.gov.za/documents/financial-intelligence-centre-act
+title: Loan Application — J. Mokoena (SYNTHETIC DEMO DATA)
+url: internal://synthetic-demo/loan-application-1
 ---
 
-<the actual text of the section, copied from the official source>
+<case document text>
 ```
 
-Good starting sources for the initial corpus:
-
-- Financial Intelligence Centre Act (FICA) and amendments — gov.za / financialintelligencecentre.gov.za
-- SARB Prudential Authority guidance notes and directives — resbank.co.za (Prudential Authority section)
-- POPIA (Protection of Personal Information Act), especially the cross-border transfer provisions (Chapter 9) — justice.gov.za / info.gov.za
-- The Joint Standard on Cybersecurity and Cyber Resilience (2025) — referenced in Absa's own Integrated Report as an active compliance requirement
-
-Keep each source document focused (one Act, one circular, one standard per file)
-so citations in the app point to something specific rather than a 200-page PDF.
-
-After adding documents, run `npm run ingest` to (re)build the retrieval index.
+After adding or changing documents, run `npm run ingest` to rebuild the index.

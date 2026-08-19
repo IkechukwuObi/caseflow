@@ -37,9 +37,10 @@ export default function Home() {
   return (
     <main>
       <div className="banner">
-        Early prototype. Answers are restricted to the ingested source corpus and
-        cited — if the corpus is empty or doesn&apos;t cover a topic, it will say so
-        rather than guess. Not legal or compliance advice.
+        Early prototype, synthetic demo cases only. Answers are restricted to
+        the ingested case archive — if a case isn&apos;t indexed, it will say so
+        rather than guess. Compliance-trigger flags are rule-based pattern
+        matches for human review, not a determination. Not legal or compliance advice.
       </div>
 
       <div className="thread">
@@ -53,7 +54,7 @@ export default function Home() {
       <div className="composer">
         <textarea
           rows={2}
-          placeholder="Ask a FICA / SARB / POPIA compliance question..."
+          placeholder="Ask about a case, e.g. 'what's the status of the Mokoena loan application?'"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
