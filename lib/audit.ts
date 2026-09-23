@@ -19,19 +19,24 @@
  * ---
  * Storage, said plainly (same standard as the rest of this repo):
  *
- * This appends JSON Lines to a local file. That's fine for `npm run dev`
- * and for demoing the shape of an audit trail. It is NOT fine in
- * production: Vercel's filesystem is read-only outside /tmp, and /tmp
- * doesn't persist across invocations, so a real deployment would lose
- * every event on the next cold start. Swapping this for a real audit
- * store (Postgres, Supabase, anything append-only and queryable) is a
- * drop-in replacement — every caller of this module goes through
- * logAuditEvent/readAuditLog only, never touches the file directly, so
- * only this file needs to change.
+ * This appends JSON Lines to a file — /tmp on Vercel (the only writable
+ * path there), the local project folder everywhere else. That's fine for
+ * `npm run dev` and for demoing the shape of an audit trail. It is NOT
+ * fine as real production audit storage: /tmp on Vercel isn't guaranteed
+ * to survive a cold start or to be shared across concurrent invocations,
+ * so events can go missing under real load. What it does guarantee, after
+ * an earlier version of this file didn't: a storage failure never breaks
+ * the actual search, chat, or review request — see the try/catch in
+ * every function below. Swapping this for a real audit store (Postgres,
+ * Supabase, anything append-only and queryable) is a drop-in replacement
+ * — every caller of this module goes through logAuditEvent/readAuditLog
+ * only, never touches the file directly, so only this file needs to
+ * change.
  */
 
 import { randomUUID } from "crypto";
 import { promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import type { PolicyMatch } from "./policy";
 
@@ -48,12 +53,30 @@ export interface AuditEvent {
   payload: Record<string, unknown>;
 }
 
-const AUDIT_LOG_PATH = path.join(process.cwd(), "audit", "audit-log.jsonl");
+// process.cwd() is READ-ONLY on Vercel's serverless functions (and most
+// serverless platforms) outside of the one writable scratch directory,
+// /tmp. Writing to a folder under cwd, which is what this file did in an
+// earlier version, throws EROFS on every single request in production,
+// not just "doesn't persist" — it breaks search, chat, and review outright.
+// `process.env.VERCEL` is set automatically by Vercel, so this picks /tmp
+// there and the local project folder everywhere else (npm run dev).
+const AUDIT_LOG_PATH = process.env.VERCEL
+  ? path.join(os.tmpdir(), "caseflow-audit-log.jsonl")
+  : path.join(process.cwd(), "audit", "audit-log.jsonl");
 
 async function ensureAuditDir(): Promise<void> {
   await fs.mkdir(path.dirname(AUDIT_LOG_PATH), { recursive: true });
 }
 
+/**
+ * Audit logging is a side channel, never a dependency of the main request.
+ * Every write and read below is wrapped so a storage failure — wrong
+ * permissions, disk full, /tmp evicted, anything — degrades to "this one
+ * event didn't get logged," never to "the user's search or chat request
+ * failed." A silent audit gap is a known, visible limitation (see the
+ * module comment further down); a 500 on every case lookup is an outage.
+ * Failures still print to the server logs so they're not invisible to you.
+ */
 export async function logAuditEvent(
   event: Omit<AuditEvent, "id" | "timestamp">
 ): Promise<AuditEvent> {
@@ -62,8 +85,12 @@ export async function logAuditEvent(
     id: randomUUID(),
     timestamp: new Date().toISOString(),
   };
-  await ensureAuditDir();
-  await fs.appendFile(AUDIT_LOG_PATH, JSON.stringify(full) + "\n", "utf-8");
+  try {
+    await ensureAuditDir();
+    await fs.appendFile(AUDIT_LOG_PATH, JSON.stringify(full) + "\n", "utf-8");
+  } catch (err) {
+    console.error("[audit] failed to write event (continuing without audit log):", err);
+  }
   return full;
 }
 
@@ -72,22 +99,25 @@ export async function readAuditLog(filter?: {
   caseReference?: string;
   eventType?: AuditEventType;
 }): Promise<AuditEvent[]> {
+  let events: AuditEvent[] = [];
   try {
     const raw = await fs.readFile(AUDIT_LOG_PATH, "utf-8");
-    const events = raw
+    events = raw
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as AuditEvent);
-    return events.filter((e) => {
-      if (filter?.requestId && e.requestId !== filter.requestId) return false;
-      if (filter?.caseReference && e.caseReference !== filter.caseReference) return false;
-      if (filter?.eventType && e.eventType !== filter.eventType) return false;
-      return true;
-    });
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return []; // no events logged yet
-    throw err;
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("[audit] failed to read audit log (returning empty):", err);
+    }
+    return [];
   }
+  return events.filter((e) => {
+    if (filter?.requestId && e.requestId !== filter.requestId) return false;
+    if (filter?.caseReference && e.caseReference !== filter.caseReference) return false;
+    if (filter?.eventType && e.eventType !== filter.eventType) return false;
+    return true;
+  });
 }
 
 /**
@@ -96,7 +126,7 @@ export async function readAuditLog(filter?: {
  * review UI would show a case handler: "the AI suggested a look here, and
  * nobody's signed off on it."
  */
-export async function getPendingReviews(): Promise<
+export async function getPendingReviews(): Promise
   { caseReference: string; caseTitle?: string; requestId: string; matches: PolicyMatch[]; flaggedAt: string }[]
 > {
   const events = await readAuditLog();
