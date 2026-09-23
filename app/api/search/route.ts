@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { runSearchCaseArchive } from "@/lib/tools";
 
@@ -10,7 +11,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await runSearchCaseArchive(query);
+    // One-shot public demo endpoint, no conversation to correlate across —
+    // each hit gets its own requestId for the audit trail.
+    const result = await runSearchCaseArchive(query, { requestId: randomUUID() });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

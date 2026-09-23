@@ -1,11 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   searchCaseArchiveTool,
   runSearchCaseArchive,
   flagComplianceTriggersTool,
   runFlagComplianceTriggers,
+  type ToolContext,
 } from "@/lib/tools";
+import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
 
@@ -18,13 +21,15 @@ Hard rules, non-negotiable:
    Never answer from general knowledge or invent case details.
 2. When summarizing a case, base every fact on the retrieved case text. If asked something
    the case text doesn't cover, say so rather than guessing.
-3. After retrieving a case, call flag_compliance_triggers on its text and mention any
-   triggered patterns plainly as "worth a human compliance look," not as a conclusion.
-   This is a supporting check, not the main point of your answer — don't over-index on it.
+3. After retrieving a case, call flag_compliance_triggers on its text. For any match, mention
+   the rule ID, severity, which team it routes to, and the regulation reference plainly as
+   "worth a human look," never as a conclusion. This is a supporting check, not the main
+   point of your answer — don't over-index on it.
 4. If search_case_archive returns found: false, say plainly that the case isn't in the
    archive yet. Do not fill the gap with a plausible-sounding guess.
 5. Keep answers concise and focused on what a busy case handler actually needs: status,
-   key facts, what's pending, and anything flagged.`;
+   key facts, what's pending, and anything flagged. Close by stating this case still needs
+   a human sign-off before it's actioned — nothing here is a final decision.`;
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -39,6 +44,20 @@ export async function POST(req: NextRequest) {
   const anthropic = new Anthropic({ apiKey });
 
   const conversation: Anthropic.MessageParam[] = messages;
+
+  // One requestId ties every tool call and the final answer for this turn
+  // together in the audit trail (lib/audit.ts) — this is how a case gets
+  // reconstructed after the fact: what was searched, what fired, what was
+  // said, in order.
+  const requestId = randomUUID();
+  const ctx: ToolContext = { requestId };
+
+  // Tracks the most recently retrieved case so the compliance-check audit
+  // event can be attributed to a specific case, even though Claude's
+  // flag_compliance_triggers call only carries caseText, not a reference —
+  // that correlation is orchestration logic, not something the tool schema
+  // should have to carry.
+  let lastCase: { reference?: string; title?: string } = {};
 
   // Tool-use loop: Claude may call either tool one or more times before
   // producing a final answer. Cap iterations defensively so a malformed
@@ -61,9 +80,16 @@ export async function POST(req: NextRequest) {
 
     if (toolUseBlocks.length === 0) {
       const textBlock = response.content.find((b) => b.type === "text");
-      return NextResponse.json({
-        reply: textBlock && textBlock.type === "text" ? textBlock.text : "",
+      const reply = textBlock && textBlock.type === "text" ? textBlock.text : "";
+      await logAuditEvent({
+        requestId,
+        eventType: "assistant_answer",
+        actor: "system",
+        caseReference: lastCase.reference,
+        caseTitle: lastCase.title,
+        payload: { reply },
       });
+      return NextResponse.json({ reply, requestId });
     }
 
     conversation.push({ role: "assistant", content: response.content });
@@ -72,7 +98,10 @@ export async function POST(req: NextRequest) {
     for (const block of toolUseBlocks) {
       if (block.name === "search_case_archive") {
         const args = block.input as { query: string };
-        const result = await runSearchCaseArchive(args.query);
+        const result = await runSearchCaseArchive(args.query, ctx);
+        if (result.found && result.cases) {
+          lastCase = { reference: result.cases[0]?.reference, title: result.cases[0]?.title };
+        }
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,
@@ -80,7 +109,10 @@ export async function POST(req: NextRequest) {
         });
       } else if (block.name === "flag_compliance_triggers") {
         const args = block.input as { caseText: string };
-        const result = runFlagComplianceTriggers(args.caseText);
+        const result = await runFlagComplianceTriggers(args.caseText, ctx, {
+          caseReference: lastCase.reference,
+          caseTitle: lastCase.title,
+        });
         toolResults.push({
           type: "tool_result",
           tool_use_id: block.id,

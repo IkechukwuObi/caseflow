@@ -1,18 +1,31 @@
 import { retrieve } from "./retrieve";
+import { evaluatePolicyTriggers, type PolicyMatch } from "./policy";
+import { logAuditEvent } from "./audit";
 
 /**
  * The single source of truth for tool behavior. Both the web app's API route
  * and the standalone MCP server call these same functions, so the chat UI
  * and a developer connected via Claude Desktop/Claude Code get identical
- * behavior.
+ * behavior — including identical audit logging, since that lives in here
+ * too, not bolted onto just one consumer.
  *
  * Two tools, deliberately split:
  *  - search_case_archive: the primary pitch. Case retrieval and triage —
  *    the efficiency story (generalized from Absa's real AI/OCR Gateway win).
- *  - flag_compliance_triggers: a small secondary tool. Cheap, rule-based,
- *    no model call needed. This is the security/compliance background
- *    folded in as a supporting feature, not the crux of the product.
+ *  - flag_compliance_triggers: a small secondary tool, now backed by the
+ *    structured policy engine in lib/policy.ts instead of a flat regex
+ *    list. Still rule-based, still cheap, still not a model call — a
+ *    richer signal isn't the same thing as a judgment call.
+ *
+ * ToolContext carries the requestId used to correlate every tool call and
+ * the final answer in the audit trail (lib/audit.ts). Callers (the chat
+ * route, the MCP server) generate one requestId per conversation turn and
+ * pass it through every tool invocation in that turn.
  */
+
+export interface ToolContext {
+  requestId: string;
+}
 
 export const searchCaseArchiveTool = {
   name: "search_case_archive",
@@ -33,8 +46,32 @@ export const searchCaseArchiveTool = {
   },
 };
 
-export async function runSearchCaseArchive(query: string) {
+export interface CaseSearchResult {
+  found: boolean;
+  message?: string;
+  cases?: { text: string; title: string; reference: string; relevance: number }[];
+}
+
+export async function runSearchCaseArchive(
+  query: string,
+  ctx: ToolContext
+): Promise<CaseSearchResult> {
   const results = await retrieve(query, 5);
+  const top = results[0];
+
+  await logAuditEvent({
+    requestId: ctx.requestId,
+    eventType: "retrieval",
+    actor: "system",
+    caseReference: top?.chunk.sourceUrl,
+    caseTitle: top?.chunk.sourceTitle,
+    payload: {
+      query,
+      resultCount: results.length,
+      topScore: top ? Number(top.score.toFixed(4)) : null,
+    },
+  });
+
   if (results.length === 0) {
     return {
       found: false,
@@ -54,24 +91,18 @@ export async function runSearchCaseArchive(query: string) {
   };
 }
 
-// Lightweight, non-AI, keyword-pattern flags. Deliberately NOT model-based —
-// this is a lookup against known trigger patterns, not a judgment call, so
-// it can't hallucinate and doesn't need a tool-use round trip on its own.
-const TRIGGER_PATTERNS: { label: string; pattern: RegExp }[] = [
-  { label: "Undocumented large cash movement", pattern: /cash deposit|cash payment/i },
-  { label: "New business with high declared turnover", pattern: /newly registered|no trading history/i },
-  { label: "Authentication/fraud dispute pattern", pattern: /otp|3-d secure|sim-swap/i },
-  { label: "Cross-border or foreign-currency activity", pattern: /cross-border|foreign currency|offshore/i },
-];
-
 export const flagComplianceTriggersTool = {
   name: "flag_compliance_triggers",
   description:
-    "Scan case text for known compliance-relevant trigger patterns (large " +
-    "undocumented cash movements, inconsistent new-business turnover, " +
-    "authentication/fraud patterns, cross-border activity). Rule-based, not " +
-    "a judgment call — flags patterns worth a human compliance review, does " +
-    "not assert a conclusion about the case.",
+    "Scan case text against the policy engine (lib/policy.ts) for known " +
+    "trigger patterns — large undocumented cash movements, inconsistent " +
+    "new-business turnover, authentication/fraud patterns, cross-border " +
+    "activity. Each result includes a rule ID, severity, which team it " +
+    "routes to (compliance vs fraud), and the regulation it's tied to " +
+    "where one applies. Rule-based, not a judgment call — flags patterns " +
+    "worth a human review, does not assert a conclusion about the case. " +
+    "When reporting results, cite the rule ID and regulation reference, " +
+    "not just the plain-language label.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -84,14 +115,29 @@ export const flagComplianceTriggersTool = {
   },
 };
 
-export function runFlagComplianceTriggers(caseText: string) {
-  const matches = TRIGGER_PATTERNS.filter((t) => t.pattern.test(caseText)).map((t) => t.label);
+export async function runFlagComplianceTriggers(
+  caseText: string,
+  ctx: ToolContext,
+  caseInfo?: { caseReference?: string; caseTitle?: string }
+) {
+  const matches: PolicyMatch[] = evaluatePolicyTriggers(caseText);
+
+  await logAuditEvent({
+    requestId: ctx.requestId,
+    eventType: "policy_check",
+    actor: "system",
+    caseReference: caseInfo?.caseReference,
+    caseTitle: caseInfo?.caseTitle,
+    payload: { matches },
+  });
+
   return {
     triggered: matches.length > 0,
-    patterns: matches,
+    matches,
     note:
       matches.length > 0
-        ? "These are pattern matches only, not a compliance determination. Route to a human reviewer."
+        ? "These are rule matches only, not a compliance determination. Route each to the " +
+          "listed team for human review — see matches[].team and matches[].regulationRef."
         : "No known trigger patterns matched.",
   };
 }

@@ -27,7 +27,7 @@ export default function Home() {
         ...next,
         { role: "assistant", content: data.reply ?? data.error ?? "No response." },
       ]);
-    } catch (err) {
+    } catch {
       setMessages([...next, { role: "assistant", content: "Request failed. Check the server logs." }]);
     } finally {
       setLoading(false);
@@ -36,17 +36,14 @@ export default function Home() {
 
   return (
     <main>
-      <div className="banner">
-        Early prototype, synthetic demo cases only. Answers are restricted to
-        the ingested case archive — if a case isn&apos;t indexed, it will say so
-        rather than guess. Compliance-trigger flags are rule-based pattern
-        matches for human review, not a determination. Not legal or compliance advice.
-        <br />
-        No Anthropic credit loaded yet? See the{" "}
-        <a href="/demo" style={{ color: "#a9c0ff" }}>
-          retrieval-only demo
-        </a>{" "}
-        — real search, no LLM call needed.
+      <div className="mark">
+        <h1>CaseFlow</h1>
+        <p>
+          Ask about a case, loan application, account opening, or dispute,
+          and get its status, key facts, and anything worth a compliance or
+          fraud look. Every answer still needs a human sign-off before it's
+          actioned.
+        </p>
       </div>
 
       <div className="thread">
@@ -60,7 +57,7 @@ export default function Home() {
       <div className="composer">
         <textarea
           rows={2}
-          placeholder="Ask about a case, e.g. 'what's the status of the Mokoena loan application?'"
+          placeholder="e.g. what's the status of the Mokoena loan application?"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -71,8 +68,16 @@ export default function Home() {
           }}
         />
         <button onClick={send} disabled={loading}>
-          {loading ? "..." : "Ask"}
+          {loading ? "…" : "Ask"}
         </button>
+      </div>
+
+      <div className="footnote">
+        Early prototype, synthetic demo cases only, three of them. Answers
+        are restricted to the indexed archive, and compliance-trigger flags
+        are rule-based matches for human review, not a determination or
+        legal advice. No Anthropic credit loaded? Try the{" "}
+        <a href="/demo">retrieval-only demo</a>, real search, no LLM call.
       </div>
     </main>
   );
